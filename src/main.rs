@@ -1,3 +1,9 @@
+// ADVENT OF CODE SOLUTION; 
+// DAY 1 PART 1
+// DAY 1 PART 2
+// https://github.com/mkralla11/rocket_equation
+// twitter @mkrallapro
+
 use async_std::{fs::File, io::BufReader, prelude::*, task};
 
 
@@ -5,10 +11,19 @@ fn main() {
     let file_path = "./data/module_masses.txt";
     let mut rocket_calc = RocketCalc::new(file_path);
     
-    let total = task::block_on(async {
-        rocket_calc.load_and_calc_fuel_for_modules().await
+    let fuel_total_without_fuel_mass = task::block_on(async {
+        rocket_calc.load_and_calc_fuel_for_modules_basic().await
     }).unwrap();
-    println!("total: {:?}", total);
+
+
+    let fuel_total_with_fuel_mass = task::block_on(async {
+        rocket_calc.load_and_calc_fuel_for_modules_and_fuel_mass().await
+    }).unwrap();
+
+    // DAY 1 PART 1
+    println!("Fuel total WITHOUT fuel mass compensation: {:?}", fuel_total_without_fuel_mass);
+    // DAY 1 PART 2
+    println!("Fuel total WITH fuel mass compensation: {:?}", fuel_total_with_fuel_mass);
 }
 
 
@@ -25,32 +40,23 @@ impl RocketCalc {
             file_line_stream: None
         }
     }
-
-    async fn load_and_calc_fuel_for_modules(&mut self) -> Result<(i32), String>{
-        self.load_file().await.map_err(|err| err.to_string())?;
-        self.calc_fuel_for_modules().await
-    }
-
     async fn load_file(&mut self) -> Result<(), std::io::Error> {
-        // let contents = fs::read_to_string(&self.file_path)?;
-        // self.file_str = Some(contents);
-
         self.file_line_stream = Some(BufReader::new(File::open(&self.file_path).await?));
-
-        // for line in f.lines() {
-        //     println!("{}", line.unwrap());
-        // }
-
         Ok(())
     }
-
-
 
     fn calc_fuel(mass: i32) -> i32 {
         ((mass as f64 / 3_f64).floor() as i32) - 2
     }
 
-    async fn calc_fuel_for_modules(&mut self) -> Result<(i32), String>{
+    async fn load_and_calc_fuel_for_modules_via<F>(&mut self, f: F) -> Result<(i32), String> where F: Fn(i32) -> i32 {
+        self.load_file().await.map_err(|err| err.to_string())?;
+        self.calc_fuel_for_modules_via(f).await
+    }
+
+
+
+    async fn calc_fuel_for_modules_via<F>(&mut self, f: F) -> Result<(i32), String> where F: Fn(i32) -> i32 {
         let mut fuel_total = 0;
         match self.file_line_stream {
             Some(ref mut buf)=>{
@@ -59,7 +65,8 @@ impl RocketCalc {
                     let line_str = line.map_err(|err| err.to_string())?;
                     // println!("line: {}", line_str);
                     let fuel = line_str.parse::<i32>().map_err(|err| err.to_string())?;
-                    fuel_total += RocketCalc::calc_fuel(fuel);
+                    fuel_total += f(fuel);
+
                 }
 
                 Ok(fuel_total)
@@ -68,8 +75,37 @@ impl RocketCalc {
                 Err("Buf not loaded!".to_string())
             }
         }
-
     }
+
+
+
+    async fn load_and_calc_fuel_for_modules_basic(&mut self) -> Result<(i32), String>{
+        let calc_fuel_without_fuel_mass = |module_mass| {
+            RocketCalc::calc_fuel(module_mass)
+        };
+
+        self.load_and_calc_fuel_for_modules_via(calc_fuel_without_fuel_mass).await
+    }
+
+
+    async fn load_and_calc_fuel_for_modules_and_fuel_mass(&mut self) -> Result<(i32), String>{
+        let calc_fuel_without_fuel_mass = |module_mass| {
+            let fuel = RocketCalc::calc_fuel(module_mass);
+            let mut fuel_mass_total = 0;
+            let mut current_fuel_left_for_mass_calc = fuel;
+            while current_fuel_left_for_mass_calc > 0 {
+                current_fuel_left_for_mass_calc = RocketCalc::calc_fuel(current_fuel_left_for_mass_calc);
+                if current_fuel_left_for_mass_calc > 0 {
+                    fuel_mass_total += current_fuel_left_for_mass_calc;
+                }
+            }
+            fuel + fuel_mass_total
+        };
+
+        self.load_and_calc_fuel_for_modules_via(calc_fuel_without_fuel_mass).await
+    }
+
+
 }
 
 
@@ -101,17 +137,31 @@ mod tests {
         assert_eq!(fuel, 26961);
     }
 
+    // DAY 1 PART 1
     #[test]
-    fn calculates_fuel_from_mass_stream() {
+    fn load_and_calc_fuel_for_modules_without_fuel_mass() {
         let file_path = "./data/module_masses.txt";
         let mut rocket_calc = RocketCalc::new(file_path);
         
         let total = task::block_on(async {
-            rocket_calc.load_and_calc_fuel_for_modules().await
+            rocket_calc.load_and_calc_fuel_for_modules_basic().await
         }).unwrap();
 
 
         assert_eq!(total, 3267638);
+    }
+
+    // DAY 1 PART 2
+    #[test]
+    fn load_and_calc_fuel_for_modules_with_fuel_mass() {
+        let file_path = "./data/module_masses.txt";
+        let mut rocket_calc = RocketCalc::new(file_path);
+        
+        let total = task::block_on(async {
+            rocket_calc.load_and_calc_fuel_for_modules_and_fuel_mass().await
+        }).unwrap();
+
+        assert_eq!(total, 4898585);
     }
 }
 
